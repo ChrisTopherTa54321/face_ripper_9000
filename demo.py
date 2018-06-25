@@ -85,9 +85,9 @@ def main( args ):
 
     def writeFromQueue( resQueue, imageIdx, videoIdx ):
         try:
-            croppedframe = resQueue.get(block=False)
-            print('Writing image ' + str(imageIdx) + '.')
-            cv2.imwrite(("vid_" + str(videoIdx) + '_pic' + str(imageIdx) + '_' + random_string(15) + ".jpg"), croppedframe, [int(cv2.IMWRITE_JPEG_QUALITY), 98])
+            croppedframe, vidFrame = resQueue.get(block=False)
+            print('Writing image {} (frame {})'.format(imageIdx, vidFrame) )
+            cv2.imwrite(("vid_" + str(videoIdx) + '_pic' + str(imageIdx) + '_frame' + str(vidFrame) + "_" + random_string(15) + ".png"), croppedframe )
             return True
         except queue.Empty:
             return False
@@ -131,12 +131,10 @@ def main( args ):
                 percentage = (framenum/totalframes)*100
                 print("Queuing frame " + str(int(framenum)) + "/" + str(int(totalframes)) + str(" (%.2f%%)" % percentage))
 
-                rgb_frame = frame[:, :, ::-1]
-
                 if writeFromQueue( poolResultQueue, written, zz ):
                     written += 1
 
-                poolWorkQueue.put( ( rgb_frame, tol, known_faces ) )
+                poolWorkQueue.put( ( frame, framenum, tol, known_faces, outputsize ) )
 
                 #------
 
@@ -197,9 +195,9 @@ def worker_process_func(procId, workQueue, resultQueue, doneEvent):
     while not ( doneEvent.is_set() and workQueue.empty() ):
         try:
             work = workQueue.get(block=True, timeout=1)
-            rgb_frame = work[0]
-            tolerance = work[1]
-            known_faces = work[2]
+
+            frame, frame_number, tolerance, known_faces, outputsize = work
+            rgb_frame = frame[:, :, ::-1]
 
             vidwidth = rgb_frame.shape[1]
             vidheight = rgb_frame.shape[0]
@@ -226,13 +224,13 @@ def worker_process_func(procId, workQueue, resultQueue, doneEvent):
                     padding = (bottom - top)/2
 
                     if((top - padding >= 0) and (bottom + padding <= vidheight) and (left - padding >= 0) and (right + padding <= vidwidth)):
-                        croppedframe = rgb_frame[int(top - padding):int(bottom + padding), int(left - padding):int(right + padding)]
+                        croppedframe = frame[int(top - padding):int(bottom + padding), int(left - padding):int(right + padding)]
                         #if the image is too small, resize it to outputsize
                         cheight, cwidth, cchannels = croppedframe.shape
                         if (cheight < 256) or (cwidth < 256):
                             croppedframe = cv2.resize(croppedframe, outputsize, interpolation=cv2.INTER_CUBIC)
-                        print("Worker {} found a result!".format(procId))
-                        resultQueue.put( croppedframe )
+                        #print("Worker {} found a result!".format(procId))
+                        resultQueue.put( ( croppedframe, int(frame_number) ) )
         except queue.Empty:
             pass
     print("Worker {} done!".format(procId))
@@ -241,6 +239,6 @@ def worker_process_func(procId, workQueue, resultQueue, doneEvent):
 # program entry point
 #
 if __name__ == "__main__":
-    os.system('cls' if os.name=='nt' else 'clear')
+    #os.system('cls' if os.name=='nt' else 'clear')
     args = parseArgs()
     main( args )
